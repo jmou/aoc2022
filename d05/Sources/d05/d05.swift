@@ -79,7 +79,7 @@ extension Stacks {
     }
 
     var tops: String {
-        return String(self.map(\.last!))
+        String(self.map(\.last!))
     }
 }
 

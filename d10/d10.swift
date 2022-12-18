@@ -1,6 +1,6 @@
 enum Instruction {
-    case AddX(value: Int)
-    case Noop
+    case addx(value: Int)
+    case noop
 }
 
 struct Machine {
@@ -10,23 +10,19 @@ struct Machine {
     var substep: Int = 0
     var program: [Instruction]
 
-    var running: Bool {
-        return ip < program.count
-    }
+    var running: Bool { ip < program.count }
 
-    var signal: Int {
-        return clock * regX
-    }
+    var signal: Int { clock * regX }
 
     mutating func step() {
         switch program[ip] {
-        case .AddX where substep == 0:
+        case .addx where substep == 0:
             substep += 1
-        case .AddX(let value) where substep == 1:
+        case .addx(let value) where substep == 1:
             regX += value
             ip += 1
             substep = 0
-        case .Noop:
+        case .noop:
             ip += 1
         default:
             fatalError("bad state")
@@ -40,9 +36,9 @@ while let line = readLine() {
     let pieces = line.split(separator: " ", omittingEmptySubsequences: false)
     switch pieces[0] {
     case "noop" where pieces.count == 1:
-        program.append(.Noop)
+        program.append(.noop)
     case "addx" where pieces.count == 2:
-        program.append(.AddX(value: Int(pieces[1])!))
+        program.append(.addx(value: Int(pieces[1])!))
     default:
         fatalError("bad instruction")
     }

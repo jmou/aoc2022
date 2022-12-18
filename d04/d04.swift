@@ -1,6 +1,6 @@
 extension ClosedRange {
     func includes(_ other: ClosedRange) -> Bool {
-        return self.lowerBound <= other.lowerBound && self.upperBound >= other.upperBound
+        self.lowerBound <= other.lowerBound && self.upperBound >= other.upperBound
     }
 }
 

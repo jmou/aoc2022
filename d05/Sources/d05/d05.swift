@@ -1,12 +1,5 @@
 import Algorithms
-
-struct StdinIterator : Sequence, IteratorProtocol {
-    typealias Element = String
-
-    mutating func next() -> String? {
-        return readLine()
-    }
-}
+import Foundation
 
 typealias Stacks = [[Character]]
 
@@ -86,7 +79,20 @@ extension Stacks {
 @main
 public struct d05 {
     public static func main() {
-        let input = Input(fromLines: StdinIterator())
+        guard CommandLine.arguments.count == 2 else {
+            fatalError("need input path argument")
+        }
+        // Actually reading a file line-by-line is not straightforward, but
+        // could be done with lower level file I/O (using a defer statement).
+        let data = try? String(contentsOfFile: CommandLine.arguments[1])
+        guard var data else {
+            fatalError("could not read input file")
+        }
+        if data.last == "\n" {
+            data.removeLast()
+        }
+        let input = Input(fromLines: data.split(separator: "\n", omittingEmptySubsequences: false))
+
         var stacks = input.stacks
         stacks.applyP1(steps: input.steps)
         print(stacks.tops)

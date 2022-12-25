@@ -41,7 +41,7 @@ extension StringProtocol {
     }
 }
 
-struct PriorityQueue2<T> {
+struct PriorityQueue<T> {
     var heap: [(Int, T)] = []
 
     mutating func push(priority: Int, element: T) {
@@ -84,23 +84,16 @@ struct PriorityQueue2<T> {
     }
 }
 
-struct PriorityQueue<T> {
-    var array: [(Int, T)] = []
-
-    mutating func push(priority: Int, element: T) {
-        array.append((priority, element))
-    }
-
-    mutating func pop() -> T? {
-        array.sort(by: { $0.0 < $1.0 })
-        return array.isEmpty ? nil : array.removeFirst().1
-    }
-}
-
 struct Valve {
     var name: String
     var flowRate: Int
     var neighbors: [String]
+}
+
+struct State {
+    var path: [Int]
+    var remainingTime: Int
+    var cost: Int
 }
 
 struct Graph {
@@ -161,11 +154,10 @@ struct Graph {
         }
     }
 
-    // XXX
-    func pressure(ofPath path: [Int]) -> Int {
+    func pressure(ofPath path: [Int], time: Int) -> Int {
         assert(flowRates[path.first!] == 0)
         var result = 0
-        var remainingTime = 30
+        var remainingTime = time
         for (from, to) in zip(path, path.dropFirst()) {
             remainingTime -= edges[from][to]
             precondition(remainingTime > 0)
@@ -178,7 +170,6 @@ struct Graph {
     // to calculate path opportunity cost (cumulative residual over time) and as
     // an admissible (never overshoots cost) and consistent (triangle
     // inequality) heuristic.
-    // XXX unclear whether this is an appropriate A* heuristic
     private func residualFlowRate(opened: [Int]) -> Int {
         var result = 0
         for i in flowRates.indices {
@@ -189,136 +180,41 @@ struct Graph {
         return result
     }
 
-    // A* (mostly)
-    // XXX Dijkstra's?
-    func search<T: Solution>(initial: T) -> T? {
-        var fringe = PriorityQueue<T>()
-        fringe.push(priority: residualFlowRate(opened: initial.opened), element: initial)
+    // A*
+    func search(initial: State, restrictedTo indices: [Int]? = nil) -> State? {
+        var fringe = PriorityQueue<State>()
+        fringe.push(priority: residualFlowRate(opened: initial.path), element: initial)
         while let current = fringe.pop() {
-            if current.isTerminal {
+            if current.remainingTime == 0 {
                 return current
             }
-            for candidate in current.neighbors(edges: edges, residualFlowRate: residualFlowRate(opened: current.opened)) {
-                // Technically not admissible when no time remaining, but
-                // shouldn't matter at the end of the search.
-                // XXX maybe it does matter
-                fringe.push(priority: candidate.cost + residualFlowRate(opened: candidate.opened), element: candidate)
+            let residual = residualFlowRate(opened: current.path)
+            for i in indices ?? Array(edges.indices) {
+                let transitionTime = edges[current.path.last!][i]
+                guard !current.path.contains(i),  // do not revisit nodes
+                    current.remainingTime >= transitionTime else {
+                    continue
+                }
+                let state = State(
+                    path: current.path + [i],
+                    remainingTime: current.remainingTime - transitionTime,
+                    cost: current.cost + transitionTime * residual)
+                fringe.push(priority: state.cost + residualFlowRate(opened: state.path), element: state)
             }
+            // Idle remaining time.
+            let state = State(path: current.path, remainingTime: 0, cost: current.cost + current.remainingTime * residual)
+            fringe.push(priority: state.cost, element: state)
         }
         return nil
     }
 }
 
-protocol Solution {
-    var opened: [Int] { get }
-    var cost: Int { get }
-    var isTerminal: Bool { get }
-    func neighbors(edges: [[Int]], residualFlowRate: Int) -> [Self]
-}
-
-struct SolutionP1: Solution {
-    var path: [Int]
-    var remainingTime: Int
-    var cost: Int
-
-    var opened: [Int] { path }
-    var isTerminal: Bool { remainingTime == 0 }
-
-    func neighbors(edges: [[Int]], residualFlowRate: Int) -> [Self] {
-        var result: [SolutionP1] = []
-        for i in edges.indices {
-            let transitionTime = edges[path.last!][i]
-            guard !path.contains(i),  // do not revisit nodes
-                  remainingTime >= transitionTime else {
-                continue
-            }
-            result.append(SolutionP1(
-                path: path + [i],
-                remainingTime: remainingTime - transitionTime,
-                cost: cost + transitionTime * residualFlowRate))
-        }
-        result.append(SolutionP1(path: path, remainingTime: 0, cost: cost + remainingTime * residualFlowRate))
-        return result
-    }
-}
-
-extension [Int]: Comparable {
-    public static func <(lhs: Self, rhs: Self) -> Bool {
-        if lhs.count == rhs.count {
-            for i in lhs.indices {
-                if lhs[i] < rhs[i] {
-                    return true
-                } else if lhs[i] > rhs[i] {
-                    return false
-                }
-            }
-            return false
-        } else {
-            return lhs.count < rhs.count
-        }
-    }
-}
-
-// XXX should be permutations
-func combinations(_ base: some Collection<Int>, count: Int) -> [[Int]] {
-    if base.count < count {
-        return []
-    }
-    let head = base[base.startIndex]
-    let tail = base.dropFirst()
-    return combinations(tail, count: count - 1).map({ [head] + $0 }) + combinations(tail, count: count)
-}
-
-// XXX route
-struct SolutionP2: Solution {
-    var paths: [[Int]]
-    var cost: Int
-
-    static let totalTime: Int = 26
-
-    var opened: [Int] { paths.reduce(into: [], { $0 += $1 }) }
-    var isTerminal: Bool { paths.filter({ $0.last! != -1 }).isEmpty }
-
-    func neighbors(edges: [[Int]], residualFlowRate: Int) -> [Self] {
-        let elapsed = paths.map { path in
-            zip(path, path.dropFirst()).map({ edges[$0][$1] }).reduce(0, +)
-        }
-        let maxElapsed = elapsed.max()!
-
-        var result: [SolutionP2] = []
-        // XXX -1 only works for n == 2
-        outer: for append in combinations(-1 ..< edges.count, count: paths.count) {
-            var newPaths = paths
-            var newElapsed = elapsed
-            var newMaxElapsed: Int? = nil
-            for i in paths.indices {
-                // XXX cost
-                if append[i] > -1 {
-                    newElapsed[i] += edges[paths[i].last!][i]
-                    if newMaxElapsed == nil {
-                        newMaxElapsed = newElapsed[i]
-                    }
-                    guard !opened.contains(i),  // do not revisit nodes
-                            newMaxElapsed! <= Self.totalTime,
-                            newElapsed[i] == newMaxElapsed,
-                            newMaxElapsed! > maxElapsed else {
-                        continue outer
-                    }
-                    newPaths[i].append(append[i])
-                }
-            }
-            newPaths.sort(by: <)
-            result.append(SolutionP2(
-                paths: newPaths,
-                cost: cost + (newMaxElapsed! - maxElapsed) * residualFlowRate))
-        }
-        if result.isEmpty {  // terminal node
-            let newPaths = paths.map({ $0 + [-1] })
-            result.append(SolutionP2(
-                paths: newPaths,
-                cost: cost + (Self.totalTime - maxElapsed) * residualFlowRate))
-        }
-        return result
+func partitionings(_ base: some Collection<Int>) -> [([Int], [Int])] {
+    if let option = base.first {
+        let sub = partitionings(base.dropFirst())
+        return sub.map({ ($0.0 + [option], $0.1) }) + sub.map({ ($0.0, $0.1 + [option]) })
+    } else {
+        return [([], [])]
     }
 }
 
@@ -339,8 +235,14 @@ while let line = readLine() {
 let graph = Graph(fromValves: valves)
 let start = graph.names.firstIndex(of: "AA")!
 
-let p1 = graph.search(initial: SolutionP1(path: [start], remainingTime: 30, cost: 0))!
-print(graph.pressure(ofPath: p1.path))
+let p1 = graph.search(initial: State(path: [start], remainingTime: 30, cost: 0))!
+print(graph.pressure(ofPath: p1.path, time: 30))
 
-let p2 = graph.search(initial: SolutionP2(paths: [[start], [start]], cost: 0))!
-print(p2.paths.map({ $0.dropLast().map({ graph.names[$0] }) }))
+var p2 = 0
+for (alice, bob) in partitionings(graph.edges.indices) {
+    let aliceState = graph.search(initial: State(path: [start], remainingTime: 26, cost: 0), restrictedTo: alice)!
+    let bobState = graph.search(initial: State(path: [start], remainingTime: 26, cost: 0), restrictedTo: bob)!
+    let pressure = graph.pressure(ofPath: aliceState.path, time: 26) + graph.pressure(ofPath: bobState.path, time: 26)
+    p2 = max(p2, pressure)
+}
+print(p2)
